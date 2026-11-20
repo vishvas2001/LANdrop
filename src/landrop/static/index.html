@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LANDrop — Local Wi-Fi Transfer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: #0f1115; color: #f3f4f6; padding: 1.5rem; max-width: 720px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    h1 { font-size: 1.5rem; letter-spacing: -0.02em; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; background: #181b21; border: 1px solid #2a2f3a; padding: 0.35rem 0.75rem; border-radius: 999px; font-size: 0.82rem; color: #d1d5db; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; }
+    .card { background: rgba(24, 27, 33, 0.85); backdrop-filter: blur(12px); border: 1px solid #262b36; border-radius: 14px; padding: 1.25rem; margin-bottom: 1.25rem; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; }
+    h2 { font-size: 1rem; font-weight: 600; color: #e5e7eb; }
+    textarea { width: 100%; height: 115px; background: #111318; color: #f3f4f6; border: 1px solid #2d3340; border-radius: 10px; padding: 0.8rem; font-size: 0.95rem; resize: vertical; outline: none; }
+    textarea:focus { border-color: #3b82f6; }
+    .btn-row { display: flex; gap: 0.5rem; margin-top: 0.75rem; justify-content: flex-end; }
+    button, a.btn { background: #2563eb; color: #fff; border: none; padding: 0.55rem 1rem; border-radius: 8px; font-weight: 600; font-size: 0.88rem; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+    button:hover, a.btn:hover { background: #1d4ed8; }
+    button:disabled { background: #2d3340; color: #6b7280; cursor: not-allowed; }
+    button.secondary { background: #232732; color: #e5e7eb; border: 1px solid #323846; }
+    button.secondary:hover { background: #2c313f; }
+    a.btn.emerald { background: #10b981; color: #052e16; }
+    a.btn.emerald:hover { background: #059669; }
+    .dropzone { border: 2px dashed #2e3543; border-radius: 12px; padding: 1.5rem; text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+    .dropzone.dragover { border-color: #3b82f6; background: rgba(59, 130, 246, 0.08); }
+    .dropzone p { color: #9ca3af; font-size: 0.9rem; }
+    .dropzone strong { color: #f3f4f6; }
+    .progress-wrap { display: none; margin-top: 1rem; }
+    .progress-track { width: 100%; height: 8px; background: #111318; border-radius: 999px; overflow: hidden; }
+    .progress-fill { height: 100%; width: 0%; background: #10b981; transition: width 0.12s ease; }
+    .progress-meta { display: flex; justify-content: space-between; font-size: 0.8rem; color: #9ca3af; margin-top: 0.4rem; }
+    .file-item { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; padding: 0.75rem 0; border-bottom: 1px solid #222731; }
+    .file-item:last-child { border-bottom: none; padding-bottom: 0; }
+    .file-info { min-width: 0; flex: 1; }
+    .file-name { font-weight: 500; word-break: break-word; margin-bottom: 0.2rem; }
+    .file-meta { display: flex; flex-wrap: wrap; gap: 0.6rem; font-size: 0.78rem; color: #9ca3af; }
+    .countdown { color: #fbbf24; font-variant-numeric: tabular-nums; }
+    .countdown.urgent { color: #f87171; }
+    .empty-state { color: #6b7280; font-size: 0.88rem; text-align: center; padding: 1rem 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>LANDrop</h1>
+    <div class="pill"><span class="dot" id="ws-dot"></span><span id="ws-status">Connecting...</span></div>
+  </header>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>Live Shared Clipboard</h2>
+    </div>
+    <textarea id="clipboard" placeholder="Paste links, notes, or text here—syncs live across all devices..."></textarea>
+    <div class="btn-row">
+      <button class="secondary" onclick="clearClipboard()">Clear</button>
+      <button class="secondary" id="copy-btn" onclick="copyClipboard()">Copy Text</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>Lossless File Drop</h2>
+    </div>
+    <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()">
+      <p><strong>Tap to select files</strong>, drag &amp; drop here, or press <strong>Ctrl+V</strong> to paste a screenshot</p>
+      <input type="file" id="file-input" multiple hidden />
+    </div>
+
+    <div class="progress-wrap" id="progress-wrap">
+      <div class="progress-track">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <div class="progress-meta">
+        <span id="progress-label">Preparing...</span>
+        <span id="progress-speed">0.0 MB/s</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>Shared Files</h2>
+      <a class="btn secondary" id="zip-all-btn" href="/download-all" style="display: none;">Download All (.zip)</a>
+    </div>
+    <div id="file-list"><p class="empty-state">No files uploaded yet.</p></div>
+  </div>
+
+  <script>
+    const clipboardEl = document.getElementById("clipboard");
+    const statusEl = document.getElementById("ws-status");
+    const dotEl = document.getElementById("ws-dot");
+    let cachedFiles = [];
+
+    // 1. Live WebSocket Clipboard
+    const wsProtocol = location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${wsProtocol}//${location.host}/ws`);
+
+    ws.onopen = () => {
+      statusEl.textContent = "Live Room Connected";
+      dotEl.style.background = "#10b981";
+    };
+
+    ws.onclose = () => {
+      statusEl.textContent = "Disconnected";
+      dotEl.style.background = "#ef4444";
+    };
+
+    ws.onmessage = (event) => {
+      if (clipboardEl.value !== event.data) {
+        clipboardEl.value = event.data;
+      }
+    };
+
+    clipboardEl.addEventListener("input", () => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(clipboardEl.value);
+      }
+    });
+
+    function copyClipboard() {
+      navigator.clipboard.writeText(clipboardEl.value);
+      const btn = document.getElementById("copy-btn");
+      btn.textContent = "Copied!";
+      setTimeout(() => (btn.textContent = "Copy Text"), 1500);
+    }
+
+    function clearClipboard() {
+      clipboardEl.value = "";
+      if (ws.readyState === WebSocket.OPEN) ws.send("");
+    }
+
+    // 2. File Input, Drag-and-Drop & Screenshot Paste
+    const fileInput = document.getElementById("file-input");
+    const dropzone = document.getElementById("dropzone");
+
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files.length) uploadQueue(Array.from(fileInput.files));
+    });
+
+    dropzone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropzone.classList.add("dragover");
+    });
+
+    dropzone.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+
+    dropzone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropzone.classList.remove("dragover");
+      if (e.dataTransfer.files.length) uploadQueue(Array.from(e.dataTransfer.files));
+    });
+
+    window.addEventListener("paste", (e) => {
+      const items = Array.from(e.clipboardData?.items || []);
+      const imageFiles = items
+        .filter((item) => item.type.startsWith("image/"))
+        .map((item, idx) => {
+          const blob = item.getAsFile();
+          return new File([blob], `screenshot_${Date.now()}_${idx + 1}.png`, { type: blob.type });
+        });
+      if (imageFiles.length) uploadQueue(imageFiles);
+    });
+
+    // 3. Sequential XHR Upload Queue
+    function uploadSingleFile(file, index, totalCount) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const fillEl = document.getElementById("progress-fill");
+        const labelEl = document.getElementById("progress-label");
+        const speedEl = document.getElementById("progress-speed");
+        const startTime = performance.now();
+
+        xhr.open("POST", "/upload");
+
+        xhr.upload.onprogress = (event) => {
+          if (!event.lengthComputable) return;
+          const percent = Math.round((event.loaded / event.total) * 100);
+          const elapsedSec = (performance.now() - startTime) / 1000;
+          const mbPerSec = elapsedSec > 0 ? (event.loaded / (1024 * 1024)) / elapsedSec : 0;
+
+          fillEl.style.width = `${percent}%`;
+          labelEl.textContent = `File ${index + 1} of ${totalCount}: ${file.name} (${percent}%)`;
+          speedEl.textContent = `${mbPerSec.toFixed(1)} MB/s`;
+        };
+
+        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Error ${xhr.status}`)));
+        xhr.onerror = () => reject(new Error("Network error"));
+        xhr.send(formData);
+      });
+    }
+
+    async function uploadQueue(files) {
+      const wrapEl = document.getElementById("progress-wrap");
+      const fillEl = document.getElementById("progress-fill");
+      const labelEl = document.getElementById("progress-label");
+      const speedEl = document.getElementById("progress-speed");
+
+      wrapEl.style.display = "block";
+      fillEl.style.background = "#10b981";
+
+      try {
+        for (let i = 0; i < files.length; i++) {
+          fillEl.style.width = "0%";
+          await uploadSingleFile(files[i], i, files.length);
+          await loadFiles();
+        }
+        labelEl.textContent = `Uploaded ${files.length} file(s)`;
+        speedEl.textContent = "Complete";
+        fileInput.value = "";
+      } catch (err) {
+        fillEl.style.background = "#ef4444";
+        labelEl.textContent = `Failed: ${err.message}`;
+        speedEl.textContent = "";
+      }
+    }
+
+    // 4. File Formatting & Live Countdown Timer
+    function formatBytes(bytes) {
+      if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+      if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(2)} MB`;
+      return `${(bytes / 1024).toFixed(1)} KB`;
+    }
+
+    function formatCountdown(expiresAtIso) {
+      const diffMs = new Date(expiresAtIso).getTime() - Date.now();
+      if (diffMs <= 0) return { text: "Expiring...", urgent: true };
+      const totalSec = Math.floor(diffMs / 1000);
+      const mins = Math.floor(totalSec / 60);
+      const secs = String(totalSec % 60).padStart(2, "0");
+      return { text: `${mins}m ${secs}s left`, urgent: mins < 2 };
+    }
+
+    function renderFiles() {
+      const listEl = document.getElementById("file-list");
+      const zipBtn = document.getElementById("zip-all-btn");
+
+      zipBtn.style.display = cachedFiles.length >= 2 ? "inline-flex" : "none";
+
+      if (!cachedFiles.length) {
+        listEl.innerHTML = '<p class="empty-state">No files uploaded yet.</p>';
+        return;
+      }
+
+      listEl.innerHTML = cachedFiles.map((f) => {
+        const cd = formatCountdown(f.expires_at);
+        return `
+          <div class="file-item">
+            <div class="file-info">
+              <div class="file-name">${f.original_name}</div>
+              <div class="file-meta">
+                <span>${formatBytes(f.size_bytes)}</span>
+                <span class="countdown ${cd.urgent ? "urgent" : ""}" data-expires="${f.expires_at}">${cd.text}</span>
+              </div>
+            </div>
+            <a class="btn emerald" href="/files/${f.file_id}">Download</a>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function loadFiles() {
+      const res = await fetch("/files");
+      cachedFiles = await res.json();
+      renderFiles();
+    }
+
+    // Tick countdown every 1 second smoothly without re-fetching from server
+    setInterval(() => {
+      document.querySelectorAll(".countdown").forEach((el) => {
+        const cd = formatCountdown(el.dataset.expires);
+        el.textContent = cd.text;
+        el.classList.toggle("urgent", cd.urgent);
+      });
+    }, 1000);
+
+    loadFiles();
+    setInterval(loadFiles, 5000);
+  </script>
+</body>
+</html>

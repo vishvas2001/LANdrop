@@ -1,0 +1,20 @@
+[project]
+name = "landrop"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "vishvas2001", email = "vishvasp621@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.165.0",
+    "qrcode[pil]>=8.2",
+]
+
+[project.scripts]
+zero-cloud-air-drop = "zero_cloud_air_drop:main"
+
+[build-system]
+requires = ["uv_build>=0.13.9,<0.14.0"]
+build-backend = "uv_build"
