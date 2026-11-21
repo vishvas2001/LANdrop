@@ -1,9 +1,16 @@
 import socket
 import qrcode
+import os
 
 
 def get_lan_ip() -> str:
-    """Detect the active local network IPv4 address without external internet traffic."""
+    """Detect the active local network IPv4 address (or use local Host IP)."""
+
+    env_ip = os.getenv("HOST_IP")
+
+    if env_ip:
+        return env_ip.strip()
+
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         try:
             s.connect(("10.255.255.255", 1))
